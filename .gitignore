@@ -1,0 +1,3 @@
+*.o
+test_sfft3
+*.csv
