@@ -1,5 +1,3 @@
-# TODO:
-
 # SFFT3
 
 This repo contains boiler plate code to lift an 1D FFT into 3D using
