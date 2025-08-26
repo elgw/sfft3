@@ -4,7 +4,7 @@ This repo contains boiler plate code to lift an 1D FFT into 3D using
 straight forward code with no explicit vectorization or auto
 tuning. It is a proof-of-concept project which is not tested enough to
 be trusted yet. That said, it should be simple to swap the 1D
-transformation routines with those from other library.
+transformation routines with those from another library.
 
 SFFT3 uses the 1D FFT routines from [fftw3](https://www.fftw.org/) to
 build an 3D FFT using semi in-place transpositions. For that purpose
@@ -49,7 +49,7 @@ in-place with `FFTW_ESTIMATE`, FFTW3-I.M. denotes FFTW3 in-place with
 ``` shell
 args="--warmup 0.1 --benchmark 20  --verbose 2"
 # add --estimate to use FFTW_ESTIMATE instead of FFTW_MEASURE
-th=1
+th=8
 OMP_NUM_THREADS=${th} ./test_sfft3 --m 128 --n 128 --p 128 ${args} --warmup 10
 OMP_NUM_THREADS=${th} ./test_sfft3 --m 256 --n 256 --p 256 ${args}
 OMP_NUM_THREADS=${th} ./test_sfft3 --m 512 --n 256 --p 128 ${args}
@@ -61,15 +61,13 @@ OMP_NUM_THREADS=${th} ./test_sfft3 --m 2100 --n 2100 --p 121 ${args}
 ```
 </details>
 
-- Does the results suggests that the fastest fourier
-  transform in the west (FFTW3) can be even faster if it just use a
-  little more memory?
+- Do the results suggests that the fastest fourier transform in the
+  west (FFTW3) can be even faster using a larger workspace? Actually
+  FFTW has the flag `FFTW_DESTROY_INPUT` which I've not
+  tested. However in that case 100% extra memory is used.
 
 - For small sizes my code is slow since the transposing parts use
-  intermediate buffers which only benefits large problems.
-
-- FFTW has the flag `FFTW_DESTROY_INPUT` which I've not tested. In
-  that case it is allowed to use a whole extra image as buffer.
+  intermediate buffers which are only of benefit for large problems.
 
 - The code here was tested on a single CPU and hence buffer sizes etc
   are all right for that machine, but will probably be bad choices for
