@@ -2,6 +2,7 @@
 
 #include <string.h>
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -23,6 +24,13 @@ static int nomp(i64 n)
     return t;
 }
 
+static i64 block_side(void)
+{
+    i64 bs = 16*floor(sqrt(SFFT3_L1/8)/16/2);
+    bs < 16 ? bs = 16 : 0;
+    return bs;
+}
+
 static void
 fft_Y_plane(fftwf_complex * restrict _X,
             fftwf_complex * restrict _Y,
@@ -32,8 +40,8 @@ fft_Y_plane(fftwf_complex * restrict _X,
 {
     double * X = (double*) _X;
     double * Y = (double*) _Y;
-    i64 bs = 48;
-    const size_t L3 = 32000000/omp_get_max_threads();
+    i64 bs = block_side();
+    const size_t L3 = SFFT3_L3/omp_get_max_threads();
     i64 nl = bs * (L3 / (N*bs*8 ) / 4);
     nl < bs ? nl = bs : 0;
 
@@ -131,8 +139,8 @@ fft_Z(double * restrict X,
       fftwf_plan plan,
       fftwf_plan aligned_plan)
 {
-    const i64 bs = 48;
-    const size_t L3 = 32000000/omp_get_max_threads();
+    const i64 bs = block_side();
+    const size_t L3 = SFFT3_L3/omp_get_max_threads();
     i64 nl = bs * (L3 / (P*bs*8 ) / 4);
     nl < bs ? nl = bs : 0;
 

@@ -1,36 +1,40 @@
 # SFFT3
 
-This repo contains boiler plate code to lift an 1D FFT into 3D using
-straight forward code with no explicit vectorization or auto
-tuning. It is a proof-of-concept project which is not tested enough to
-be trusted yet. That said, it should be simple to swap the 1D
-transformation routines with those from another library.
+This repo contains boiler plate code (<400 SLOC) to lift an 1D FFT
+into 3D using straight forward code with no explicit vectorization or
+auto tuning. It should be considered proof-of-concept since it is neither
+properly tested nor used anywhere else at the moment. That said, it
+should be simple to swap the 1D transformation routines with those
+from another library.
 
 SFFT3 uses the 1D FFT routines from [fftw3](https://www.fftw.org/) to
-build an 3D FFT using semi in-place transpositions. For that purpose
-it use a per-thread workspace buffer, each the size of the largest
-plane. That is more than FFTW3 what uses, hence timings are not
+build a semi-inplace 3D FFT. For that purpose per-thread workspace
+buffers are used which, at most the size of the largest plane
+each. The 3D routines in FFTW3 use less memory, hence timings are not
 directly comparable/fair.
 
-It was a fun exercise to write this and I learned a lot :) Including:
+It was a fun exercise to write this and I learned a lot Including:
 
-- It is not trivial at all to write fast code for in-place
-  transpositions (slow code safely tucked away in another repository).
+1. It is not trivial at all to write fast code for in-place
+   transpositions (slow code safely tucked away in another repository).
 
-- Even out of place transpositions are hard to make fast. And it
-  turned out that it was never a good idea to transpose the full data
-  set, not even a full plane at a time. Eventually the solution that I
-  took was to transpose the data planes in chunks, processes them and
-  then store back the results.
+2. Even out of place transpositions are hard to make fast.
+
+Eventually it turned out that it wasn't a good idea to transpose the
+full data set, not even a full plane at a time. Current code
+transposes the data planes in chunks, processes them and then store
+back the results.
 
 ## Results
 
-Below are some results (average execution for pairs of forward and
-reverse transforms, time given in seconds) comparing the specialized
-3D FFT routines in FFTW3 to SFFT3. An 8-core AMD Ryzen 3700X machine
-with Ubuntu 24.04.2 with gcc 13.3 was used. FFTW3-I.E. denotes FFTW3
-in-place with `FFTW_ESTIMATE`, FFTW3-I.M. denotes FFTW3 in-place with
-`FFTW_MEASURE`. In all cases 8 threads were used.
+The table below shows average execution times, in seconds, for pairs
+of forward and reverse transforms, thus comparing the specialized 3D
+FFT routines in FFTW3 to SFFT3. An 8-core AMD Ryzen 3700X machine with
+Ubuntu 24.04.2 and gcc 13.3 was used (it can be built with clang as
+well). **FFTW3-I.E.** denotes FFTW3 in-place with `FFTW_ESTIMATE`,
+**FFTW3-I.M.** denotes FFTW3 in-place with `FFTW_MEASURE`, which is
+the default setting. Data padding and FFTW planning times are not
+included. In all cases 8 threads were used.
 
 | Size           | FFTW3-I.E. | FFTW3-I.M.    | SFFT3         |
 |----------------|------------|---------------|---------------|
@@ -44,9 +48,26 @@ in-place with `FFTW_ESTIMATE`, FFTW3-I.M. denotes FFTW3 in-place with
 | 2100x2100x121  | 9.959e-01  | 6.485e-01     | **5.560e-01** |
 |                |            |               |               |
 
+<details><summary>4-core Intel 6700k benchmark results</summary>
+
+| Size           | FFTW3-I.M. | SFFT3 |
+|----------------|------------|-------|
+| 128x128x128    |            |       |
+| 256x256x256    |            |       |
+| 512x256x128    |            |       |
+| 512x512x512    |            |       |
+| 1009x829x211   |            |       |
+| 1024x1024x256  |            |       |
+| 1024x1024x1024 |            |       |
+| 2100x2100x121  |            |       |
+
+
+</details>
+
 <details><summary>Benchmark code</summary>
 
 ``` shell
+SFFT3_L1=64000 SFFT_L3=32000000 make
 args="--warmup 0.1 --benchmark 20  --verbose 2"
 # add --estimate to use FFTW_ESTIMATE instead of FFTW_MEASURE
 th=8
@@ -61,13 +82,14 @@ OMP_NUM_THREADS=${th} ./test_sfft3 --m 2100 --n 2100 --p 121 ${args}
 ```
 </details>
 
-- Do the results suggests that the fastest fourier transform in the
-  west (FFTW3) can be even faster using a larger workspace? Actually
-  FFTW has the flag `FFTW_DESTROY_INPUT` which I've not
-  tested. However in that case 100% extra memory is used.
+- Possibly the fastest fourier transform in the west (FFTW3) can be
+  even faster using a larger workspace. For in-place transforms there
+  is no flag for that. For out-of-place transforms there is the option
+  `FFTW_DESTROY_INPUT` which I've not tested. I
 
-- For small sizes my code is slow since the transposing parts use
-  intermediate buffers which are only of benefit for large problems.
+- For small sizes my code is slow since the code for transpositions
+  use intermediate buffers, requiring extra reads and writes, which
+  are beneficial for large problems only.
 
 - The code here was tested on a single CPU and hence buffer sizes etc
   are all right for that machine, but will probably be bad choices for

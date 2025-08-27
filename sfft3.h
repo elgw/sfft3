@@ -3,6 +3,13 @@
 #include <stdint.h>
 #include <fftw3.h>
 
+#ifndef SFFT3_L1
+#define SFFT3_L1 64000
+#endif
+#ifndef SFFT3_L3
+#define SFFT3_L3 32000000
+#endif
+
 typedef struct {
     double * workspace;
     int64_t workspace_size; /* Number of bytes allocated for the workspace */

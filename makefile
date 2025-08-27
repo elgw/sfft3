@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS=-Wall -Wextra -pedantic -std=gnu11 -Wno-unused-function
+CFLAGS+=-Wall -Wextra -pedantic -std=gnu11 -Wno-unused-function
 
 CFLAGS+=-fopenmp
 LDFLAGS+=-lm
