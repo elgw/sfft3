@@ -1,7 +1,7 @@
 # SFFT3
 
 This repo contains boiler plate code (~500 SLOC or approximately the size of
-a FFTW plan in nerd format) to lift an 1D FFT into 3D using straight
+a FFTW plan in nerd format) to lift a 1D FFT into 3D using straight
 forward code with no explicit vectorization or auto tuning. It should
 be considered proof-of-concept since it is neither properly tested nor
 used anywhere else at the moment. That said, it should be simple to
@@ -9,9 +9,9 @@ swap the 1D transformation routines with those from another library.
 
 SFFT3 uses the 1D FFT routines from [fftw3](https://www.fftw.org/) to
 build a semi-inplace 3D FFT. For that purpose per-thread workspace
-buffers are used which, at most the size of the largest plane
-each. The 3D routines in FFTW3 use less memory, hence timings are not
-directly comparable/fair.
+buffers are used, at most the size of the largest plane each. The 3D
+routines in FFTW3 use less memory, hence timings are not directly
+comparable/fair.
 
 It was a fun exercise to write this and I learned/confirmed a lot
 Including:
@@ -25,20 +25,27 @@ Including:
    (like FFTW uses) is a brilliant idea.
 
 Eventually I decided to transposes the data planes in chunks,
-processes them and then store back the results. Only tiny plane are
-transposed in full.
+processes them and then store back the results. Only tiny
+planes/slices are transposed in full.
 
 ## Results
 
-The table below shows average execution times, in seconds, for pairs
+The tables below shows average execution times in seconds, for pairs
 of forward and reverse transforms, comparing the specialized 3D FFT
-routines in FFTW3 to SFFT3. An 8-core AMD Ryzen 3700X machine with
-Ubuntu 24.04.2 and gcc 13.3 was used (it can be built with clang as
-well). **-E** denotes FFTW3 `FFTW_ESTIMATE` and **-P** denotes FFTW3
-`FFTW_PATIENT`. Data padding and FFTW planning times are not
-included. In all cases 8 threads were used. The OMP version of fftw3
-(`-lfftw3d_omp`) is used since I've found that to be faster than the
-threads version (`-fftw3f_threads`).
+routines in FFTW3 to SFFT3. The code was built with gcc, although
+clang can be used as well.
+
+**-E** denotes FFTW3 `FFTW_ESTIMATE` `-M` stands for `FFTW_MEASURE`,
+and **-P** denotes FFTW3 `FFTW_PATIENT`. Data padding and FFTW
+planning times are not included.
+
+In all cases as many threads as physical cores were used. The OMP
+version of fftw3 (`-lfftw3d_omp`) is used since I've found that to be
+faster than the threads version (`-fftw3f_threads`).
+
+### 8-core AMD Ryzen 3700X
+
+Ubuntu 24.04.2
 
 | Size           | FFTW3-E   | FFTW3-P       | SFFT3-P       |
 |----------------|-----------|---------------|---------------|
@@ -72,9 +79,8 @@ OMP_NUM_THREADS=${th} ./test_sfft3 --m 2100 --n 2100 --p 121 ${args}
 </details>
 
 
-<details><summary>4-core Intel 6700k benchmark results</summary>
+## 4-core Intel 6700k
 
-This machine has 256 kB L2. `-M` stands for `FFTW_MEASURE`.
 
 | Size           | FFTW3-M       | SFFT3-M       |
 |----------------|---------------|---------------|
@@ -88,7 +94,8 @@ This machine has 256 kB L2. `-M` stands for `FFTW_MEASURE`.
 | 2100x2100x121  | **9.696e-01** | 1.110e+00  |
 |                |               |  |
 
-compiled and ran with:
+
+<details><summary>Details about the benchmark</summary>
 
 ``` shell
 CFLAGS="-DSFFT3_L2=256000" make -B
@@ -106,19 +113,16 @@ OMP_NUM_THREADS=${th} ./test_sfft3 --m 2100 --n 2100 --p 121 ${args}
 
 </details>
 
+# Final words
 
-- Possibly the fastest fourier transform in the west (FFTW3) can be
+- Can the fastest fourier transform in the west (FFTW) can be
   even faster using a larger workspace/and/or including another
-  sniplet. For in-place transforms there is no flag for that. For
+  sniplet? For in-place transforms there is no flag for that. For
   out-of-place transforms there is the option `FFTW_DESTROY_INPUT`
   which I've not tested.
-
-- The code here was tested on a single CPU and hence buffer sizes etc
-  are all right for that machine, but will probably be bad choices for
-  other systems.
 
 - For the smallest problem, 64x64x64, SFFT3 is actually faster when
   using only one thread. A reasonable library should figure out :)
 
 - Already here, with only a few parameters in the algorithms it is
-  clear that self-tuning would be useful -- and smarter.
+  clear that self-tuning could be of use.
