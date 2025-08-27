@@ -133,15 +133,63 @@ fft_Y_plane_large(fftwf_complex * restrict _X,
 
 
 static void
+fft_Y_plane_small(fftwf_complex * restrict _X,
+                  fftwf_complex * restrict _Y,
+                  i64 M, i64 N,
+                  fftwf_plan restrict plan2,
+                  fftwf_plan restrict plan2_aligned)
+{
+    double * X = (double*) _X;
+    double * Y = (double*) _Y;
+    for(i64 m = 0; m < M; m++)
+    {
+        for(i64 n = 0; n < N; n++)
+        {
+            Y[n + m*N] = X[m + n*M];
+        }
+    }
+
+    for(i64 m = 0; m < M; m++)
+    {
+        fftwf_complex* L = (fftwf_complex*) Y + m*N;
+        if( (ptrdiff_t) L % 16 == 0)
+        {
+            fftwf_execute_dft(plan2_aligned, L, L);
+        } else {
+            fftwf_execute_dft(plan2, L, L);
+        }
+    }
+
+    for(i64 n = 0; n < N; n++)
+    {
+        for(i64 m = 0; m < M; m++)
+        {
+            X[m + n*M] = Y[n + m*N];
+        }
+    }
+
+    return;
+}
+
+
+
+static void
 fft_Y_plane(fftwf_complex * restrict X,
             fftwf_complex * restrict Y,
             i64 M, i64 N,
             fftwf_plan restrict plan2,
             fftwf_plan restrict plan2_aligned)
 {
+    if(M*N*8 > SFFT3_L2)
+    {
         fft_Y_plane_large(X, Y,
+                      M, N,
+                      plan2, plan2_aligned);
+    } else {
+        fft_Y_plane_small(X, Y,
                           M, N,
                           plan2, plan2_aligned);
+    }
 }
 
 static void
@@ -242,13 +290,62 @@ fft_Z_large(double * restrict X,
 }
 
 static void
+fft_Z_small(double * restrict X,
+            double * restrict * restrict W0, // temp work space of size M*N
+            i64 M, i64 N, i64  P,
+            fftwf_plan plan,
+            fftwf_plan aligned_plan)
+{
+#pragma omp parallel for schedule(static)
+    for(i64 n = 0; n < N; n++)
+    {
+        double * W = W0[omp_get_thread_num()];
+
+        for(i64 m = 0; m < M; m++)
+        {
+            for(i64 p = 0; p < P; p++)
+            {
+                W[p + m*P] = X[m + n*M + p*M*N];
+            }
+        }
+
+        for(i64 m = 0; m < M; m++)
+        {
+            if( (ptrdiff_t) (W+m*P) % 16 == 0)
+            {
+                fftwf_execute_dft(aligned_plan,
+                                  (fftwf_complex*) W+m*P,
+                                  (fftwf_complex*) W+m*P);
+            } else {
+                fftwf_execute_dft(plan,
+                                  (fftwf_complex*) W+m*P,
+                                  (fftwf_complex*) W+m*P);
+            }
+        }
+        for(i64 p = 0; p < P; p++)
+        {
+            for(i64 m = 0; m < M; m++)
+            {
+                X[m + n*M + p*M*N] = W[p + m*P];
+            }
+        }
+
+    }
+}
+
+static void
 fft_Z(double * restrict X,
       double * restrict * restrict W0, // temp work space of size M*N
       i64 M, i64 N, i64  P,
       fftwf_plan plan,
       fftwf_plan aligned_plan)
 {
+    if(M*N*P*8 > SFFT3_L2) // selection could be "self-tuned"
+    {
         fft_Z_large(X, W0, M, N, P, plan, aligned_plan);
+    } else {
+        fft_Z_small(X, W0, M, N, P, plan, aligned_plan);
+    }
 }
 
 void sfft3_execute_dft_r2c(sfft_plan * plan, float * X)

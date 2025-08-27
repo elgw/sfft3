@@ -1,6 +1,6 @@
 # SFFT3
 
-This repo contains boiler plate code (<500 SLOC, about the size of
+This repo contains boiler plate code (~500 SLOC or approximately the size of
 a FFTW plan in nerd format) to lift an 1D FFT into 3D using straight
 forward code with no explicit vectorization or auto tuning. It should
 be considered proof-of-concept since it is neither properly tested nor
@@ -42,6 +42,7 @@ threads version (`-fftw3f_threads`).
 
 | Size           | FFTW3-E   | FFTW3-P       | SFFT3-P       |
 |----------------|-----------|---------------|---------------|
+| 64x64x64       | 1.285e-04 | **1.183e-04** | 1.935e-04     |
 | 128x128x128    | 9.580e-04 | **7.151e-04** | 1.077e-03     |
 | 256x256x256    | 3.926e-02 | 1.236e-02     | **1.041e-02** |
 | 512x256x128    | 1.461e-02 | 1.330e-02     | **1.085e-02** |
@@ -58,7 +59,8 @@ threads version (`-fftw3f_threads`).
 make
 args="--warmup 10 --benchmark 30  --verbose 2 --patient"
 th=8
-OMP_NUM_THREADS=${th} ./test_sfft3 --m 128 --n 128 --p 128 ${args} --warmup 10
+OMP_NUM_THREADS=${th} ./test_sfft3 --m 64 --n 64 --p 64 ${args}
+OMP_NUM_THREADS=${th} ./test_sfft3 --m 128 --n 128 --p 128 ${args}
 OMP_NUM_THREADS=${th} ./test_sfft3 --m 256 --n 256 --p 256 ${args}
 OMP_NUM_THREADS=${th} ./test_sfft3 --m 512 --n 256 --p 128 ${args}
 OMP_NUM_THREADS=${th} ./test_sfft3 --m 512 --n 512 --p 512 ${args}
@@ -109,8 +111,11 @@ OMP_NUM_THREADS=${th} ./test_sfft3 --m 2100 --n 2100 --p 121 ${args}
   even faster using a larger workspace/and/or including another
   sniplet. For in-place transforms there is no flag for that. For
   out-of-place transforms there is the option `FFTW_DESTROY_INPUT`
-  which I've not tested. I
+  which I've not tested.
 
 - The code here was tested on a single CPU and hence buffer sizes etc
   are all right for that machine, but will probably be bad choices for
   other systems.
+
+- For the smallest problem, 64x64x64, SFFT3 is actually faster when
+  using only one thread. A reasonable library should figure out :)
