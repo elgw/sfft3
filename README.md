@@ -30,18 +30,18 @@ planes/slices are transposed in full.
 
 ## Results
 
-The tables below shows average execution times in seconds, for pairs
+The tables below shows average execution times in seconds for pairs
 of forward and reverse transforms, comparing the specialized 3D FFT
 routines in FFTW3 to SFFT3. The code was built with gcc, although
 clang can be used as well.
 
-**-E** denotes FFTW3 `FFTW_ESTIMATE` `-M` stands for `FFTW_MEASURE`,
-and **-P** denotes FFTW3 `FFTW_PATIENT`. Data padding and FFTW
-planning times are not included.
+**-E** denotes `FFTW_ESTIMATE` **-M** stands for `FFTW_MEASURE`, and
+**-P** is `FFTW_PATIENT`. The time consumption for data padding and
+planning (by FFTW) is not included.
 
-In all cases as many threads as physical cores were used. The OMP
-version of fftw3 (`-lfftw3d_omp`) is used since I've found that to be
-faster than the threads version (`-fftw3f_threads`).
+In all cases one threads per physical core is used. I've linked
+against `-lfftw3d_omp` since I have a faint memory of that being
+faster than `-fftw3f_threads`.
 
 ### 8-core AMD Ryzen 3700X
 
@@ -81,6 +81,7 @@ OMP_NUM_THREADS=${th} ./test_sfft3 --m 2100 --n 2100 --p 121 ${args}
 
 ## 4-core Intel 6700k
 
+Ubuntu 22.04.5
 
 | Size           | FFTW3-M       | SFFT3-M       |
 |----------------|---------------|---------------|
