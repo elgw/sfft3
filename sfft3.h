@@ -6,8 +6,8 @@
 #ifndef SFFT3_L1
 #define SFFT3_L1 64000
 #endif
-#ifndef SFFT3_L3
-#define SFFT3_L3 32000000
+#ifndef SFFT3_L2
+#define SFFT3_L2 512000
 #endif
 
 typedef struct {
@@ -16,7 +16,7 @@ typedef struct {
     int verbose;
     int threads;
     int scale; /* Set to 1 to rescale after c2r */
-    int M;
+    int M; /* Problem size. M: size of non-strided dimension */
     int N;
     int P;
     fftwf_plan forward_M;

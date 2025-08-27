@@ -32,17 +32,17 @@ static i64 block_side(void)
 }
 
 static void
-fft_Y_plane(fftwf_complex * restrict _X,
-            fftwf_complex * restrict _Y,
-             i64 M, i64 N,
-             fftwf_plan restrict plan2,
-             fftwf_plan restrict plan2_aligned)
+fft_Y_plane_large(fftwf_complex * restrict _X,
+                  fftwf_complex * restrict _Y,
+                  i64 M, i64 N,
+                  fftwf_plan restrict plan2,
+                  fftwf_plan restrict plan2_aligned)
 {
     double * X = (double*) _X;
     double * Y = (double*) _Y;
     i64 bs = block_side();
-    const size_t L3 = SFFT3_L3/omp_get_max_threads();
-    i64 nl = bs * (L3 / (N*bs*8 ) / 4);
+
+    i64 nl = bs * (SFFT3_L2 / (N*bs*8 ) / 4);
     nl < bs ? nl = bs : 0;
 
     double buff[bs*bs] __attribute__ ((aligned (64)));
@@ -128,20 +128,31 @@ fft_Y_plane(fftwf_complex * restrict _X,
     }
 
 
-        return;
+    return;
 }
 
 
 static void
-fft_Z(double * restrict X,
-       double * restrict * restrict W0, // temp work space of size M*N
-       i64 M, i64 N, i64  P,
-      fftwf_plan plan,
-      fftwf_plan aligned_plan)
+fft_Y_plane(fftwf_complex * restrict X,
+            fftwf_complex * restrict Y,
+            i64 M, i64 N,
+            fftwf_plan restrict plan2,
+            fftwf_plan restrict plan2_aligned)
+{
+        fft_Y_plane_large(X, Y,
+                          M, N,
+                          plan2, plan2_aligned);
+}
+
+static void
+fft_Z_large(double * restrict X,
+            double * restrict * restrict W0, // temp work space of size M*N
+            i64 M, i64 N, i64  P,
+            fftwf_plan plan,
+            fftwf_plan aligned_plan)
 {
     const i64 bs = block_side();
-    const size_t L3 = SFFT3_L3/omp_get_max_threads();
-    i64 nl = bs * (L3 / (P*bs*8 ) / 4);
+    i64 nl = bs * (SFFT3_L2 / (P*bs*8 ) / 4);
     nl < bs ? nl = bs : 0;
 
 #pragma omp parallel for collapse(2) schedule(static)
@@ -230,6 +241,15 @@ fft_Z(double * restrict X,
     return;
 }
 
+static void
+fft_Z(double * restrict X,
+      double * restrict * restrict W0, // temp work space of size M*N
+      i64 M, i64 N, i64  P,
+      fftwf_plan plan,
+      fftwf_plan aligned_plan)
+{
+        fft_Z_large(X, W0, M, N, P, plan, aligned_plan);
+}
 
 void sfft3_execute_dft_r2c(sfft_plan * plan, float * X)
 {
@@ -264,13 +284,14 @@ void sfft3_execute_dft_r2c(sfft_plan * plan, float * X)
             }
         }
 
+
         fft_Y_plane((fftwf_complex*) (X+p*sM*N),
                     (fftwf_complex*) BB[omp_get_thread_num()], cM, N,
                     plan->forward_N,
                     plan->forward_a_N);
-    }
 
-    fft_Z((double*) X, BB, cM, N, P, plan->forward_P, plan->forward_a_P); // 2.140 s / 0.009
+    }
+    fft_Z((double*) X, BB, cM, N, P, plan->forward_P, plan->forward_a_P);
     return;
 }
 

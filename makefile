@@ -23,8 +23,8 @@ ifeq ($(FSAN),1)
 CFLAGS+=-fsanitize=address
 endif
 
-test_sfft3: sfft3.o test_sfft3.c
+test_sfft3: sfft3.o test_sfft3.c makefile
 	$(CC) $(CFLAGS) test_sfft3.c sfft3.o $(LDFLAGS) -o test_sfft3
 
-sfft3.o: sfft3.c
+sfft3.o: sfft3.c makefile sfft3.h
 	$(CC) -c $(CFLAGS) sfft3.c

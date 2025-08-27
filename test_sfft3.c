@@ -137,6 +137,10 @@ static void show_usage(void)
            "Sets FFTW_ESTIMATE for planning (default FFTW_MEASURE)\n");
     printf("--patient\n\t"
            "Sets FFTW_PATIENT for planning (default FFTW_MEASURE)\n");
+    printf("nofftw\n\t"
+           "Disable FFTW3 benchmark\n");
+    printf("nosfft\n\t"
+           "Disable SFFTW3 benchmark\n");
     return;
 }
 
@@ -150,6 +154,8 @@ int main(int argc, char ** argv)
     int verbose = 1;
     int threads = omp_get_max_threads();
     int flags = 0;
+    int use_fftw = 1;
+    int use_sfft = 1;
 
     static struct option long_options[] = {
         {"verbose", required_argument, 0,  'v' },
@@ -161,13 +167,15 @@ int main(int argc, char ** argv)
         {"help",    no_argument,       0,  'h' },
         {"estimate", no_argument,       0,  'E' },
         {"patient", no_argument,       0,  'P' },
+        {"nofftw", no_argument,       0,  'F' },
+        {"nosfft", no_argument,       0,  'S' },
         {0,         0,                 0,  0 }
     };
 
     while(1)
     {
         int option_index = 0;
-        int c = getopt_long(argc, argv, "v:w:b:m:n:p:hEP", long_options, &option_index);
+        int c = getopt_long(argc, argv, "v:w:b:m:n:p:hEPFS", long_options, &option_index);
         if(c == -1)
             break;
 
@@ -196,6 +204,12 @@ int main(int argc, char ** argv)
         case 'P':
             flags = flags | FFTW_PATIENT;
             break;
+        case 'F':
+            use_fftw = 0;
+            break;
+        case 'S':
+            use_sfft = 0;
+            break;
         default:
             show_usage();
             exit(EXIT_FAILURE);
@@ -203,7 +217,7 @@ int main(int argc, char ** argv)
     }
 
     char * outfile = malloc(1024);
-
+    printf("Built for L1=%d kB, L2=%d kB\n", SFFT3_L1, SFFT3_L2);
     sprintf(outfile, "results_%ld_%ld_%ld_%dth.csv", M, N, P, threads);
     if(verbose > 0)
     {
@@ -217,7 +231,7 @@ int main(int argc, char ** argv)
     float * X0 = malloc(M*N*P*sizeof(float));
     assert(X0 != NULL);
 
-    /* Generate pseudo random data */
+    /* Generate pseudo random data in [1, 2]*/
 #pragma omp parallel
     {
         unsigned int seed = 42*omp_get_thread_num();
@@ -239,85 +253,103 @@ int main(int argc, char ** argv)
     float * X = fft_pad(X0, M, N, P);
     i64 cM = (1+M/2);
 
-    /* Create FFTW3 plans */
-    fftwf_plan_with_nthreads(omp_get_max_threads());
-    fftwf_plan plan_r2c_inplace = gen_fftwf_plan_r2c(M, N, P,
-                                                     flags);
-    fftwf_plan plan_c2r_inplace = gen_fftwf_plan_c2r(M, N, P,
-                                                     flags);
-
-    /* Create sfft3 plans (with extra workspace) */
-    sfft_plan * plan = sfft3_create_plan(M, N, P,
-                                         omp_get_max_threads(), // threads
-                                         0, // verbose
-                                         flags); // for 1D transforms
-
     if(verbose > 0)
     {
-        printf("Checking results\n");
+        printf("Planning\n");
     }
+    /* Create FFTW3 plans */
+    fftwf_plan plan_r2c_inplace = NULL;
+    fftwf_plan plan_c2r_inplace = NULL;
+    if(use_fftw)
     {
-        float * X1 = malloc( cM*N*P*sizeof(fftwf_complex));
-        memcpy(X1, X, cM*N*P*sizeof(fftwf_complex) );
-        fftwf_execute_dft_r2c(plan_r2c_inplace, X, (fftwf_complex *) X);
-        sfft3_execute_dft_r2c(plan, X1);
-        // Equal in complex domain
-        fftwf_complex * cX = (fftwf_complex *) X;
-        fftwf_complex * cX1 = (fftwf_complex *) X1;
-        i64 err = 0;
-        printf(" -> Validating the r2c implementation\n");
-        for(i64 kk = 0; kk < cM*N*P; kk++)
-        {
-            if( complex_rel_err(cX[kk],  cX1[kk]) > 1e-2)
-            {
-                err++;
-                if(err < 5)
-                {
-                    printf("%ld %f %f -- %f %f (%e)\n",
-                           kk,
-                           cX[kk][0], cX[kk][1],
-                           cX1[kk][0], cX1[kk][1],
-                           complex_rel_err(cX[kk], cX1[kk]));
-                }
-            }
-        }
-        printf(" -> Validating the c2r implementation\n");
-        // Equal to input when transformed back
-        fftwf_execute_dft_c2r(plan_c2r_inplace, cX, X);
-        sfft3_execute_dft_c2r(plan, cX1);
-        float * XX = (float*) cX;
-        float * XX1 = (float*) cX1;
-        float * uXX = fft_unpad(XX, M, N, P);
-        float * uXX1 = fft_unpad(XX1, M, N, P);
-        free(X1);
-        err = 0;
-        float scale = (float) (M * N * P);
-#pragma omp parallel for
-        for(i64 kk = 0; kk < M*N*P; kk++)
-        {
-            uXX[kk] /= scale;
-            uXX1[kk] /= scale;
-        }
+        fftwf_plan_with_nthreads(omp_get_max_threads());
+        plan_r2c_inplace = gen_fftwf_plan_r2c(M, N, P,
+                                              flags);
 
-        for(i64 kk = 0; kk < M*N*P; kk++)
+        plan_c2r_inplace = gen_fftwf_plan_c2r(M, N, P,
+                                              flags);
+    }
+    /* Create sfft3 plans (with extra workspace) */
+    sfft_plan * plan = NULL;
+    if(use_sfft)
+    {
+        plan = sfft3_create_plan(M, N, P,
+                                 omp_get_max_threads(), // threads
+                                 0, // verbose
+                                 flags); // for 1D transforms
+    }
+
+    if(use_fftw && use_sfft)
+    {
+        if(verbose > 0)
         {
-            if(float_rel_err(X0[kk], uXX1[kk]) > 0.1)
+            printf("Checking results\n");
+        }
+        {
+            float * X1 = malloc( cM*N*P*sizeof(fftwf_complex));
+            memcpy(X1, X, cM*N*P*sizeof(fftwf_complex) );
+            fftwf_execute_dft_r2c(plan_r2c_inplace, X, (fftwf_complex *) X);
+            sfft3_execute_dft_r2c(plan, X1);
+            // Equal in complex domain
+            fftwf_complex * cX = (fftwf_complex *) X;
+            fftwf_complex * cX1 = (fftwf_complex *) X1;
+            i64 err = 0;
+            printf(" -> Validating the r2c implementation\n");
+            for(i64 kk = 0; kk < cM*N*P; kk++)
             {
-                err ++;
-                if(err < 5)
+                if( complex_rel_err(cX[kk],  cX1[kk]) > 1e-2)
                 {
-                    printf("X0[%ld]=%f, sfft->=%f, fftw3->%f\n", kk, X0[kk], uXX1[kk], uXX[kk]);
+                    err++;
+                    if(err < 5)
+                    {
+                        printf("%ld %f %f -- %f %f (%e)\n",
+                               kk,
+                               cX[kk][0], cX[kk][1],
+                               cX1[kk][0], cX1[kk][1],
+                               complex_rel_err(cX[kk], cX1[kk]));
+                    }
                 }
             }
+            printf(" -> Validating the c2r implementation\n");
+            // Equal to input when transformed back
+            fftwf_execute_dft_c2r(plan_c2r_inplace, cX, X);
+            sfft3_execute_dft_c2r(plan, cX1);
+            float * XX = (float*) cX;
+            float * XX1 = (float*) cX1;
+            float * uXX = fft_unpad(XX, M, N, P);
+            float * uXX1 = fft_unpad(XX1, M, N, P);
+            free(X1);
+            err = 0;
+            float scale = (float) (M * N * P);
+#pragma omp parallel for
+            for(i64 kk = 0; kk < M*N*P; kk++)
+            {
+                uXX[kk] /= scale;
+                uXX1[kk] /= scale;
+            }
+
+            for(i64 kk = 0; kk < M*N*P; kk++)
+            {
+                if(float_rel_err(X0[kk], uXX1[kk]) > 0.1)
+                {
+                    err ++;
+                    if(err < 5)
+                    {
+                        printf("X0[%ld]=%f, sfft->=%f, fftw3->%f\n", kk, X0[kk], uXX1[kk], uXX[kk]);
+                    }
+                }
+            }
+            if(err > 0)
+            {
+                printf("%ld errors\n", err);
+            }
+            free(uXX);
+            free(uXX1);
         }
-        if(err > 0)
-        {
-            printf("%ld errors\n", err);
-        }
-        free(uXX);
-        free(uXX1);
     }
+
     free(X0);
+
     float dt = 0;
     struct timespec tstart, t0, t1;
     clock_gettime(CLOCK_REALTIME, &tstart);
@@ -327,10 +359,16 @@ int main(int argc, char ** argv)
     }
     while(dt < warmup_s)
     {
-        fftwf_execute_dft_r2c(plan_r2c_inplace, X, (fftwf_complex *) X);
-        fftwf_execute_dft_c2r(plan_r2c_inplace, (fftwf_complex *) X, X);
-        sfft3_execute_dft_r2c(plan, X);
-        sfft3_execute_dft_c2r(plan, (fftwf_complex *) X);
+        if(use_fftw)
+        {
+            fftwf_execute_dft_r2c(plan_r2c_inplace, X, (fftwf_complex *) X);
+            fftwf_execute_dft_c2r(plan_r2c_inplace, (fftwf_complex *) X, X);
+        }
+        if(use_sfft)
+        {
+            sfft3_execute_dft_r2c(plan, X);
+            sfft3_execute_dft_c2r(plan, (fftwf_complex *) X);
+        }
         clock_gettime(CLOCK_REALTIME, &t1);
         dt = timespec_diff(&t1, &tstart);
     }
@@ -349,48 +387,54 @@ int main(int argc, char ** argv)
     i64 iter = 0;
     while(dt < benchmark_s)
     {
-        clock_gettime(CLOCK_REALTIME, &t0);
-        fftwf_execute_dft_r2c(plan_r2c_inplace, X, (fftwf_complex *) X);
-        clock_gettime(CLOCK_REALTIME, &t1);
-        dt = timespec_diff(&t1, &t0);
-        t_fftw += dt;
-        fprintf(fid, "fftwf_r2c, %.5f\n", dt);
-        if(verbose > 2)
+        if(use_fftw)
         {
-            printf("fftwf_r2c, %.5f\n", dt);
+            clock_gettime(CLOCK_REALTIME, &t0);
+            fftwf_execute_dft_r2c(plan_r2c_inplace, X, (fftwf_complex *) X);
+            clock_gettime(CLOCK_REALTIME, &t1);
+            dt = timespec_diff(&t1, &t0);
+            t_fftw += dt;
+            fprintf(fid, "fftwf_r2c, %.5f\n", dt);
+            if(verbose > 2)
+            {
+                printf("fftwf_r2c, %.5f\n", dt);
+            }
+
+            clock_gettime(CLOCK_REALTIME, &t0);
+            fftwf_execute_dft_c2r(plan_c2r_inplace, (fftwf_complex *) X,  X);
+            clock_gettime(CLOCK_REALTIME, &t1);
+            dt = timespec_diff(&t1, &t0);
+            t_ifftw += dt;
+            fprintf(fid, "fftwf_c2r, %.5f\n", dt);
+            if(verbose > 2)
+            {
+                printf("fftwf_c2r, %.5f\n", dt);
+            }
         }
 
-        clock_gettime(CLOCK_REALTIME, &t0);
-        fftwf_execute_dft_c2r(plan_c2r_inplace, (fftwf_complex *) X,  X);
-        clock_gettime(CLOCK_REALTIME, &t1);
-        dt = timespec_diff(&t1, &t0);
-        t_ifftw += dt;
-        fprintf(fid, "fftwf_c2r, %.5f\n", dt);
-        if(verbose > 2)
+        if(use_sfft)
         {
-            printf("fftwf_c2r, %.5f\n", dt);
-        }
+            clock_gettime(CLOCK_REALTIME, &t0);
+            sfft3_execute_dft_r2c(plan, X);
+            clock_gettime(CLOCK_REALTIME, &t1);
+            dt = timespec_diff(&t1, &t0);
+            t_sfft += dt;
+            fprintf(fid, "sfft3_r2c, %.5f\n", dt);
+            if(verbose > 2)
+            {
+                printf("sfft3_r2c, %.5f\n", dt);
+            }
 
-        clock_gettime(CLOCK_REALTIME, &t0);
-        sfft3_execute_dft_r2c(plan, X);
-        clock_gettime(CLOCK_REALTIME, &t1);
-        dt = timespec_diff(&t1, &t0);
-        t_sfft += dt;
-        fprintf(fid, "sfft3_r2c, %.5f\n", dt);
-        if(verbose > 2)
-        {
-            printf("sfft3_r2c, %.5f\n", dt);
-        }
-
-        clock_gettime(CLOCK_REALTIME, &t0);
-        sfft3_execute_dft_c2r(plan, (fftwf_complex *) X);
-        clock_gettime(CLOCK_REALTIME, &t1);
-        dt = timespec_diff(&t1, &t0);
-        t_isfft += dt;
-        fprintf(fid, "sfft3_c2r, %.5f\n", dt);
-        if(verbose > 2)
-        {
-            printf("sfft3_c2r, %.5f\n", dt);
+            clock_gettime(CLOCK_REALTIME, &t0);
+            sfft3_execute_dft_c2r(plan, (fftwf_complex *) X);
+            clock_gettime(CLOCK_REALTIME, &t1);
+            dt = timespec_diff(&t1, &t0);
+            t_isfft += dt;
+            fprintf(fid, "sfft3_c2r, %.5f\n", dt);
+            if(verbose > 2)
+            {
+                printf("sfft3_c2r, %.5f\n", dt);
+            }
         }
         dt = timespec_diff(&t1, &tstart);
         iter++;
@@ -399,23 +443,38 @@ int main(int argc, char ** argv)
     if(verbose > 0)
     {
         printf("Average times:\n");
-        printf("FFTW3:  %.3e\n", (t_fftw+t_ifftw) / (double) iter / 2.0);
-        printf("SFFT3:  %.3e\n", (t_sfft+t_isfft) / (double) iter / 2.0);
-#if 0
+        if(use_fftw)
+        {
+            printf("FFTW3:  %.3e\n", (t_fftw+t_ifftw) / (double) iter / 2.0);
+        }
+        if(use_sfft)
+        {
+            printf("SFFT3:  %.3e\n", (t_sfft+t_isfft) / (double) iter / 2.0);
+        }
+    }
+
+    if(verbose > 1)
+    {
         printf("FFTW3 forward:  %.3e\n", t_fftw / (double) iter);
         printf("FFTW3 backward: %.3e\n", t_ifftw/ (double) iter);
         printf("FFTW3 backward: %.3e\n", t_ifftw/ (double) iter);
         printf("SFFT3 forward:  %.3e\n", t_sfft / (double) iter);
         printf("SFFT3 backward: %.3e\n", t_isfft/ (double) iter);
-#endif
     }
 
     free(X);
-    fftwf_destroy_plan(plan_r2c_inplace);
-    fftwf_destroy_plan(plan_c2r_inplace);
-    sfft3_destroy_plan(plan);
+    if(use_fftw)
+    {
+        fftwf_destroy_plan(plan_r2c_inplace);
+        fftwf_destroy_plan(plan_c2r_inplace);
+    }
+    if(use_sfft)
+    {
+        sfft3_destroy_plan(plan);
+    }
 
     fclose(fid);
+    fftwf_cleanup();
 
-    return 0;
+    return EXIT_SUCCESS;
 }
