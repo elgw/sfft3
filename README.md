@@ -119,3 +119,6 @@ OMP_NUM_THREADS=${th} ./test_sfft3 --m 2100 --n 2100 --p 121 ${args}
 
 - For the smallest problem, 64x64x64, SFFT3 is actually faster when
   using only one thread. A reasonable library should figure out :)
+
+- Already here, with only a few parameters in the algorithms it is
+  clear that self-tuning would be useful -- and smarter.
