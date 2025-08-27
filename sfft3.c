@@ -20,99 +20,7 @@ static int nomp(i64 n)
     i64 r = (n-1)/m + 1;
     i64 t = (n-1)/r + 1;
 
-    //printf("%ld -> %ld\n", n, t);
     return t;
-}
-
-static float * fft_pad(const float * restrict X,
-                       const i64 M,
-                       const i64 N,
-                       const i64 P)
-{
-    const i64 cM = (1+M/2);
-    f32 * Y = fftwf_malloc(2*cM*N*P*sizeof(float));
-    const i64 nchunk = N*P;
-    const i64 chunk_size = M*sizeof(float);
-    const i64 pM = (1+M/2)*2; // padded number of floats per first dimension
-
-#pragma omp parallel for schedule(static)
-    for(i64 c = 0; c < nchunk; c++)
-    {
-        memcpy(Y+c*pM,
-               X + c*M,
-               chunk_size);
-    }
-
-    return Y;
-}
-
-float * fft_unpad(const float * restrict X,
-                  const size_t M,
-                  const size_t N,
-                  const size_t P)
-{
-    f32 * Y = fftwf_malloc(M*N*P*sizeof(float));
-    i64 nchunk = N*P;
-
-    i64 pM = (1+M/2)*2; // padded number of floats per first dimension
-
-#pragma omp parallel for
-    for(i64 c = 0; c < nchunk; c++)
-    {
-        memmove(Y+c*M,
-                X+c*pM,
-                M*sizeof(float));
-    }
-    return Y;
-}
-
-
-static void dtranspose3(const double * restrict X,
-                        double * restrict Y,
-                        const i64 M,
-                        const i64 N)
-{
-    const i64 bs = 48;
-
-#pragma omp parallel num_threads( nomp( (M/bs)*(N/bs)))
-    {
-        double buff[bs*bs] __attribute__ ((aligned (64)));
-
-#pragma omp for schedule(static) collapse(2)
-        for(i64 m0 = 0; m0 < M; m0+=bs)
-        {
-            for(i64 n0 = 0; n0 < N; n0+=bs)
-            {
-
-                i64 m1 = m0+bs;
-                m1 > M ? m1 = M : 0; // these things have negligable impact
-
-                i64 n1 = n0+bs;
-                n1 > N ? n1 = N : 0;
-                // printf("m = [ %ld, %ld], n = [%ld, %ld]\n", m0, m1, n0, n1);
-
-                // record
-                for(i64 n = n0; n < n1; n++)
-                {
-                    for(i64 m = m0; m < m1; m++)
-                    {
-                        buff[m-m0 + bs*(n-n0)] = X[m + n*M];
-                    }
-                }
-
-                // write back transposed
-                for(i64 m = m0; m < m1; m++)
-                {
-                    for(i64 n = n0; n < n1; n++)
-                    {
-                        Y[n + m*N] = buff[m-m0 + bs*(n-n0)];
-                    }
-                }
-            }
-
-        }
-    }
-    return;
 }
 
 static void
@@ -142,16 +50,14 @@ fft_Y_plane(fftwf_complex * restrict _X,
             {
 
                 i64 m1 = m0+bs;
-                m1 > M1 ? m1 = M1 : 0; // these things have negligable impact
+                m1 > M1 ? m1 = M1 : 0;
 
                 i64 n1 = n0+bs;
                 n1 > N ? n1 = N : 0;
-                // printf("m = [ %ld, %ld], n = [%ld, %ld]\n", m0, m1, n0, n1);
 
                 // record
                 for(i64 n = n0; n < n1; n++)
                 {
-                    //_mm_prefetch(X + (n+bs)*M, _MM_HINT_NTA);
                     for(i64 m = m0; m < m1; m++)
                     {
                         buff[m-m0 + bs*(n-n0)] = X[m + n*M];
@@ -167,11 +73,9 @@ fft_Y_plane(fftwf_complex * restrict _X,
                     }
                 }
             }
-
         }
 
         for(i64 m = 0; m < M1-M0; m++)
-            //for(i64 m = cM-1; m > -1; m--) // slower
         {
             fftwf_complex* L = (fftwf_complex*) Y + m*N;
             if( (ptrdiff_t) L % 16 == 0)
@@ -188,11 +92,10 @@ fft_Y_plane(fftwf_complex * restrict _X,
             {
 
                 i64 m1 = m0+bs;
-                m1 > M1 ? m1 = M1 : 0; // these things have negligable impact
+                m1 > M1 ? m1 = M1 : 0;
 
                 i64 n1 = n0+bs;
                 n1 > N ? n1 = N : 0;
-                // printf("m = [ %ld, %ld], n = [%ld, %ld]\n", m0, m1, n0, n1);
 
                 // record
                 for(i64 m = m0; m < m1; m++)
@@ -220,36 +123,6 @@ fft_Y_plane(fftwf_complex * restrict _X,
         return;
 }
 
-static void
-fft_Y_plane0(fftwf_complex* restrict X,
-            fftwf_complex* restrict B, i64 cM, i64 N,
-            fftwf_plan restrict plan2,
-            fftwf_plan restrict plan2_aligned)
-{
-    // dtranspose1 is faster for small sizes ...
-    dtranspose3((double*) X, (double*) B, cM, N);
-
-#pragma omp parallel for schedule(static) num_threads(nomp(cM))
-    for(i64 m = 0; m < cM; m++)
-        //for(i64 m = cM-1; m > -1; m--) // slower
-    {
-        fftwf_complex* L = (fftwf_complex*) B + m*N;
-        if( (ptrdiff_t) L % 16 == 0)
-        {
-            fftwf_execute_dft(plan2_aligned, L, L);
-        } else {
-            fftwf_execute_dft(plan2, L, L);
-        }
-    }
-
-
-#ifdef LEAVE_TRANSPOSED
-    dtranspose_memcpy((double*) X, (double*) B, N, cM);
-#else
-    dtranspose3((double*) B, (double*) X, N, cM);
-#endif
-    return;
-}
 
 static void
 fft_Z(double * restrict X,
@@ -258,7 +131,7 @@ fft_Z(double * restrict X,
       fftwf_plan plan,
       fftwf_plan aligned_plan)
 {
-    const i64 bs = 48; // use 48 or 56 // bs*bs*sizeof(double) < L1
+    const i64 bs = 48;
     const size_t L3 = 32000000/omp_get_max_threads();
     i64 nl = bs * (L3 / (P*bs*8 ) / 4);
     nl < bs ? nl = bs : 0;
@@ -266,6 +139,7 @@ fft_Z(double * restrict X,
 #pragma omp parallel for collapse(2) schedule(static)
     for(i64 n = 0; n < N; n++)
     {
+
         for(i64 M0 = 0; M0 < M; M0+=nl)
         {
             i64 M1 = M0 + nl;
@@ -348,189 +222,6 @@ fft_Z(double * restrict X,
     return;
 }
 
-static void
-fft_Z0(double * restrict X,
-      double *restrict * restrict W0, // temp work space of size M*N
-      i64 M, i64 N, i64  P,
-      fftwf_plan plan,
-      fftwf_plan aligned_plan)
-{
-    const i64 bs = 48; // use 48 or 56
-
-#pragma omp parallel for num_threads(nomp(N))
-    for(i64 n = 0; n < N; n++)
-    {
-        double * W = W0[omp_get_thread_num()];
-        //printf("t=%d\n", omp_get_thread_num());
-
-        double buff[bs*bs];
-
-        //#pragma omp for collapse(1)
-        for(i64 p0 = 0; p0 < P; p0+=bs)
-        {
-            for(i64 m0 = 0; m0 < M; m0+=bs)
-            {
-                i64 p1 = p0 + bs;
-                p1 > P ? p1 = P : 0;
-                i64 m1 = m0 + bs;
-                m1 > M ? m1 = M : 0;
-                // record block
-                for(i64 p = p0; p < p1; p++)
-                {
-                    for(i64 m = m0; m < m1; m++)
-                    {
-                        buff[m-m0 + (p-p0)*bs] = X[m + n*M + p*M*N];
-                        //W[p + m*P] = X[m + n*M + p*M*N];
-                    }
-                }
-                // write back block
-                for(i64 m = m0; m < m1; m++)
-                {
-                    for(i64 p = p0; p < p1; p++)
-                    {
-                        W[p + m*P] = buff[m-m0 + (p-p0)*bs];
-                    }
-                }
-            }
-        }
-
-        //#pragma omp for
-        for(i64 m = 0; m < M; m++)
-        {
-            if( (ptrdiff_t) (W+m*P) % 16 == 0)
-            {
-                fftwf_execute_dft(aligned_plan,
-                                  (fftwf_complex*) W+m*P,
-                                  (fftwf_complex*) W+m*P);
-            } else {
-                fftwf_execute_dft(plan,
-                                  (fftwf_complex*) W+m*P,
-                                  (fftwf_complex*) W+m*P);
-            }
-        }
-
-#ifdef LEAVE_TRANSPOSED
-        for(i64 pp = 0; pp < P; pp++)
-        {
-            memcpy(X + n*M + pp*M*N,
-                   W + pp*M,
-                   M*sizeof(double));
-        }
-#else
-        // 0.334, 0.309
-        // switched: 0.306, 2.298
-
-        //#pragma omp for collapse(1)
-        for(i64 p0 = 0; p0 < P; p0+=bs)
-        {
-            for(i64 m0 = 0; m0 < M; m0+=bs)
-            {
-                i64 p1 = p0 + bs;
-                p1 > P ? p1 = P : 0;
-                i64 m1 = m0 + bs;
-                m1 > M ? m1 = M : 0;
-                // record block
-                for(i64 m = m0; m < m1; m++)
-                {
-                    for(i64 p = p0; p < p1; p++)
-                    {
-                        buff[m-m0 + (p-p0)*bs] = W[p + m*P];
-                        //W[p + m*P] = X[m + n*M + p*M*N];
-                    }
-                }
-                // write back block
-                for(i64 p = p0; p < p1; p++)
-                {
-                    for(i64 m = m0; m < m1; m++)
-                    {
-                        X[m + n*M + p*M*N] = buff[m-m0 + (p-p0)*bs];
-                    }
-                }
-            }
-        }
-#endif
-
-    } // end of parallel, n
-    return;
-}
-
-
-static fftwf_plan gen_fftwf_plan_r2c(i64 M, int flags)
-{
-#ifndef NDEBUG
-    printf("Planning for %ld elements r2c\n", M);
-#endif
-    fftwf_complex * X = fftwf_malloc((M+2)*sizeof(fftwf_complex));
-
-    if( (M%2) != 0)
-    {
-        //flags = flags | FFTW_UNALIGNED;
-    }
-
-    fftwf_plan plan = fftwf_plan_dft_r2c_1d(M,
-                                            (float *) X, X,
-                                            flags);
-    if(plan == NULL)
-    {
-        fprintf(stderr, "fftwf_plan_dft_r2c_1d failed on line %d\n", __LINE__);
-        exit(EXIT_FAILURE);
-    }
-    fftwf_free(X);
-
-    return plan;
-}
-
-static fftwf_plan gen_fftwf_plan_c2r(i64 M, int flags)
-{
-#ifndef NDEBUG
-    printf("Planning for %ld elements r2c\n", M);
-#endif
-    fftwf_complex * X = fftwf_malloc(M*sizeof(fftwf_complex));
-
-    i64 cM = (1+M/2);
-    if( (cM%2) != 0)
-    {
-        flags = flags | FFTW_UNALIGNED;
-    }
-
-    fftwf_plan plan = fftwf_plan_dft_c2r_1d(M,
-                                            X, (float*) X,
-                                            flags);
-    if(plan == NULL)
-    {
-        fprintf(stderr, "fftwf_plan_dft_c2r_1d failed on line %d\n", __LINE__);
-        exit(EXIT_FAILURE);
-    }
-
-    fftwf_free(X);
-
-    return plan;
-}
-
-
-/* c2c plan */
-static fftwf_plan gen_fftwf_plan(i64 M, int direction, int flags)
-{
-    fftwf_complex * CX = fftwf_malloc((M+2)*sizeof(fftwf_complex));
-
-    if( (M%2) != 0)
-    {
-        //flags = flags | FFTW_UNALIGNED;
-    }
-
-    fftwf_plan plan = fftwf_plan_dft_1d(M,
-                                        CX, CX,
-                                        direction,
-                                        flags);
-    fftwf_free(CX);
-    if(plan == NULL)
-    {
-        fprintf(stderr, "fftwf_plan_dft_1d failed on line %d\n", __LINE__);
-        exit(EXIT_FAILURE);
-    }
-
-    return plan;
-}
 
 void sfft3_execute_dft_r2c(sfft_plan * plan, float * X)
 {
@@ -551,7 +242,6 @@ void sfft3_execute_dft_r2c(sfft_plan * plan, float * X)
     }
 
     /* FFT in X and Y */
-
 #pragma omp parallel for schedule(static) num_threads(nomp(P))
     for(i64 p = 0; p < P; p++)
     {
@@ -735,7 +425,8 @@ sfft_plan * sfft3_create_plan(i64 M, i64 N, i64 P,
     i64 tws = maxi64(M*N*sizeof(float), P*M*sizeof(fftwf_complex));
 
     plan->workspace_size = threads*tws;
-    plan->workspace = calloc(plan->workspace_size * plan->threads, sizeof(fftwf_complex));
+    assert(sizeof(double) == sizeof(fftwf_complex));
+    plan->workspace = (double*) calloc(plan->workspace_size * plan->threads, sizeof(double));
     assert(plan->workspace != NULL);
 
     plan->forward_M = gen_fftwf_1d_plan_r2c(M, FFTW_PLANNER_FLAGS | FFTW_UNALIGNED);
