@@ -31,12 +31,12 @@ planes/slices are transposed in full.
 ## Method
 
 1. For each XY-plane.
-  1. FFT for each line
-  2. For a few Y lines at a time: transpose to the buffer, calculate
-     the FFT, transpose back and store in the original location.
+   1. FFT for each line
+   2. For a few Y lines at a time: transpose to the buffer, calculate
+      the FFT, transpose back and store in the original location.
 2. For each XZ-plane
-  1. For a few Z lines at a time: transpose to the buffer, calculate
-     the FFT, transpose back and store in the original location.
+   1. For a few Z lines at a time: transpose to the buffer, calculate
+      the FFT, transpose back and store in the original location.
 
 ## Results
 
