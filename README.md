@@ -38,6 +38,10 @@ planes/slices are transposed in full.
    1. For a few Z lines at a time: transpose to the buffer, calculate
       the FFT, transpose back and store in the original location.
 
+where _a few_ means what fits into L2 memory. The transposition
+routine use an intermediate buffer that fits into L1 memory. The L1
+and L2 sizes are compile time constants.
+
 ## Results
 
 The tables below shows average execution times in seconds for pairs
@@ -103,16 +107,18 @@ Ubuntu 22.04.5
 | 1024x1024x256  | 3.949e-01     | **3.723e-01** |
 | 1024x1024x1024 | 1.705e+00     | **1.640e+00** |
 | 2100x2100x121  | **9.696e-01** | 1.110e+00     |
-| 2048x2048x1024 |               | 7.692e+00     |
+| 2048x2048x1024 | 8.092e+00     | **7.360e+00** |
+
+
 
 
 <details><summary>Details about the benchmark</summary>
 
 ``` shell
 CFLAGS="-DSFFT3_L2=256000" make -B
-args="--warmup 5 --benchmark 20"
+args="--warmup 10 --benchmark 240"
 th=4
-OMP_NUM_THREADS=${th} ./test_sfft3 --m 128 --n 128 --p 128 ${args} --warmup 10
+OMP_NUM_THREADS=${th} ./test_sfft3 --m 128 --n 128 --p 128 ${args} 
 OMP_NUM_THREADS=${th} ./test_sfft3 --m 256 --n 256 --p 256 ${args}
 OMP_NUM_THREADS=${th} ./test_sfft3 --m 512 --n 256 --p 128 ${args}
 OMP_NUM_THREADS=${th} ./test_sfft3 --m 512 --n 512 --p 512 ${args}
@@ -120,6 +126,9 @@ OMP_NUM_THREADS=${th} ./test_sfft3 --m 1009 --n 829 --p 211 ${args}
 OMP_NUM_THREADS=${th} ./test_sfft3 --m 1024 --n 1024 --p 256 ${args}
 OMP_NUM_THREADS=${th} ./test_sfft3 --m 1024 --n 1024 --p 1024 ${args}
 OMP_NUM_THREADS=${th} ./test_sfft3 --m 2100 --n 2100 --p 121 ${args}
+# Large sizes can be split up save memory
+OMP_NUM_THREADS=${th} ./test_sfft3 --nofftw  --m 2048 --n 2048 --p 1024
+OMP_NUM_THREADS=${th} ./test_sfft3 --nosfft  --m 2048 --n 2048 --p 1024
 ```
 
 </details>
