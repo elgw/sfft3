@@ -151,5 +151,5 @@ OMP_NUM_THREADS=${th} ./test_sfft3 --nosfft  --m 2048 --n 2048 --p 1024
 - Already here, with only a few parameters in the algorithms it is
   clear that self-tuning could be of use.
   
-- Now I'l go back and optimize that separable convolution --that was
+- Now I'l go back and optimize that separable convolution which was
   on the table before I got [nerd sniped](https://xkcd.com/356/).
