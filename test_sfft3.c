@@ -137,9 +137,9 @@ static void show_usage(void)
            "Sets FFTW_ESTIMATE for planning (default FFTW_MEASURE)\n");
     printf("--patient\n\t"
            "Sets FFTW_PATIENT for planning (default FFTW_MEASURE)\n");
-    printf("nofftw\n\t"
+    printf("--nofftw\n\t"
            "Disable FFTW3 benchmark\n");
-    printf("nosfft\n\t"
+    printf("--nosfft\n\t"
            "Disable SFFTW3 benchmark\n");
     return;
 }
@@ -156,6 +156,7 @@ int main(int argc, char ** argv)
     int flags = 0;
     int use_fftw = 1;
     int use_sfft = 1;
+    int evaluate = 1;
 
     static struct option long_options[] = {
         {"verbose", required_argument, 0,  'v' },
@@ -216,6 +217,11 @@ int main(int argc, char ** argv)
         }
     }
 
+    !(use_fftw && use_sfft)
+    {
+        evaluate = 0;
+    }
+    
     char * outfile = malloc(1024);
     printf("Built for L1=%d kB, L2=%d kB\n", SFFT3_L1, SFFT3_L2);
     sprintf(outfile, "results_%ld_%ld_%ld_%dth.csv", M, N, P, threads);
@@ -253,6 +259,13 @@ int main(int argc, char ** argv)
     float * X = fft_pad(X0, M, N, P);
     i64 cM = (1+M/2);
 
+    /* If no evaluation will be performed, we can free some memory already here */
+    if( !evaluate )
+    {
+        free(X0);
+        X0 = NULL;
+    }
+
     if(verbose > 0)
     {
         printf("Planning\n");
@@ -279,7 +292,7 @@ int main(int argc, char ** argv)
                                  flags); // for 1D transforms
     }
 
-    if(use_fftw && use_sfft)
+    if( evaluate )
     {
         if(verbose > 0)
         {

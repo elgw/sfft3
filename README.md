@@ -28,6 +28,16 @@ Eventually I decided to transposes the data planes in chunks,
 processes them and then store back the results. Only tiny
 planes/slices are transposed in full.
 
+## Method
+
+1. For each XY-plane.
+  1. FFT for each line
+  2. For a few Y lines at a time: transpose to the buffer, calculate
+     the FFT, transpose back and store in the original location.
+2. For each XZ-plane
+  1. For a few Z lines at a time: transpose to the buffer, calculate
+     the FFT, transpose back and store in the original location.
+
 ## Results
 
 The tables below shows average execution times in seconds for pairs
@@ -85,15 +95,15 @@ Ubuntu 22.04.5
 
 | Size           | FFTW3-M       | SFFT3-M       |
 |----------------|---------------|---------------|
-| 128x128x128    | **1.517e-03** | 2.717e-03 |
-| 256x256x256    | **2.152e-02** | 2.254e-02 |
-| 512x256x128    | **1.982e-02** | 2.179e-02 |
+| 128x128x128    | **1.517e-03** | 2.717e-03     |
+| 256x256x256    | **2.152e-02** | 2.254e-02     |
+| 512x256x128    | **1.982e-02** | 2.179e-02     |
 | 512x512x512    | 1.960e-01     | **1.820e-01** |
 | 1009x829x211   | 1.853e+00     | **1.832e+00** |
 | 1024x1024x256  | 3.949e-01     | **3.723e-01** |
 | 1024x1024x1024 | 1.705e+00     | **1.640e+00** |
-| 2100x2100x121  | **9.696e-01** | 1.110e+00  |
-|                |               |  |
+| 2100x2100x121  | **9.696e-01** | 1.110e+00     |
+| 2048x2048x1024 |               | 7.692e+00     |
 
 
 <details><summary>Details about the benchmark</summary>
@@ -116,14 +126,21 @@ OMP_NUM_THREADS=${th} ./test_sfft3 --m 2100 --n 2100 --p 121 ${args}
 
 # Final words
 
-- Can the fastest fourier transform in the west (FFTW) can be
-  even faster using a larger workspace/and/or including another
-  sniplet? For in-place transforms there is no flag for that. For
-  out-of-place transforms there is the option `FFTW_DESTROY_INPUT`
-  which I've not tested.
+- This is a proof-of-concept, and nothing more is planned.
 
-- For the smallest problem, 64x64x64, SFFT3 is actually faster when
+- Although this code use a larger workspace than FFTW it is still
+  surprisingly fast, given that there is no explicit vectorization and
+  that it is not even using
+  [`fftwf_plan_many`](https://www.fftw.org/doc/Advanced-Complex-DFTs.html)
+  which should be faster. On the other hand it is only run on two,
+  quite similar, machines and I don't expect that the results
+  generalize to other hardware.
+
+- For the smallest problem, $`64\times64\times64`$, SFFT3 is actually faster when
   using only one thread. A reasonable library should figure out :)
 
 - Already here, with only a few parameters in the algorithms it is
   clear that self-tuning could be of use.
+  
+- Now I'l go back and optimize that separable convolution --that was
+  on the table before I got [nerd sniped](https://xkcd.com/356/).
