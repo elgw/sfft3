@@ -14,17 +14,22 @@ comparable/fair.
 
 ## Method
 
+Given a [padded 3D
+array](https://www.fftw.org/fftw3_doc/Multi_002dDimensional-DFTs-of-Real-Data.html#Multi_002dDimensional-DFTs-of-Real-Data)
+the forward transform consists of these steps:
+
 1. For each XY-plane.
-   1. FFT for each line
+   1. FFT each X-line (r2c)
    2. For a few Y lines at a time: transpose to the buffer, calculate
-      the FFT, transpose back and store in the original location.
+      the FFT (c2c), transpose back and store in the original location.
 2. For each XZ-plane
    1. For a few Z lines at a time: transpose to the buffer, calculate
-      the FFT, transpose back and store in the original location.
+      the FFT (c2c), transpose back and store in the original location.
 
 where _a few_ means approximately what fits into L2 memory. The
-transposition routine use an intermediate buffer that fits into L1
-memory. The L1 and L2 sizes are compile time constants.
+transposition routine use an intermediate stack buffer that fits into L1
+memory. The L1 and L2 sizes are compile time constants. The backwards
+transform performs the steps in the reverse order.
 
 ## Results
 
